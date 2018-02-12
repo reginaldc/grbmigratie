@@ -26,29 +26,53 @@ for lyr in layers:
 # Loop through the sorted list and print out the name value
 # of each just to prove it's now sorted.
 dosstemp = "temp"
-conn = pymssql.connect("SQLCEVI","xxxx","xxxx","SQLSPATIAL")
-cursor = conn.cursor()
-fields = [QgsField("CEVI_OID", QVariant.Int),QgsField("CEVI_DATE_CREATED",QVariant.DateTime),QgsField("CEVI_USERID_CREATED",QVariant.String),QgsField("CEVI_DATE_UPDATED",QVariant.DateTime),QgsField("DOSSIER",QVariant.Double),QgsField("DOSSIERNR",QVariant.String),QgsField("DOSSIERTP",QVariant.String)]
+geomtemp = None
+
+fields = [QgsField("CEVI_OID", QVariant.Int),
+            QgsField("CEVI_DATE_CREATED",QVariant.DateTime),
+            QgsField("CEVI_USERID_CREATED",QVariant.String),
+            QgsField("CEVI_DATE_UPDATED",QVariant.DateTime),
+            QgsField("DOSSIER",QVariant.Double),
+            QgsField("DOSSIERNR",QVariant.String),
+            QgsField("DOSSIERTP",QVariant.String)]
 writer = QgsVectorFileWriter("F:\QGIS\output\dossiers.shp","31370",fields,QGis.WKBPoligon,"ESRI Shapefile")
 for feature in features:
-    capakey = feature["capa"]
-    oid = feature["cevi_oid"]
-    created = feature["cevi_date_created"]
-    userid = feature["cevi_userid_created"]
-    updated = feature["cevi_date_updated"]
-    doss = feature["dossier"]
-    dosstp = feature["dossiertp"]
-    nr = feature["dossiernr"]
-    if dosstemp == nr:
-        #dossier met meerdere percelen
-        #code voor het combineren van percelen
-        cursor.execute("SELECT * from ADP36007 WHERE CAPAKEY LIKE %s", capakey)
-        row = cursor.fetchone()
-        geom = row["GEOMETRY"]
-    else:
-        dosstemp = feature['dossiernr']
-        # selecteer perceel in ADP met capakey
-        cursor.execute("SELECT * from ADP36007 WHERE CAPAKEY LIKE %s", capakey)
-    row = cursor.fetchone()
-    geom = row["GEOMETRY"]
+    checkdossier = 0
+    tel = 0
+    while checkdossier != 1:
+        capakey = feature["capa"]
+        oid = feature["cevi_oid"]
+        created = feature["cevi_date_created"]
+        userid = feature["cevi_userid_created"]
+        updated = feature["cevi_date_updated"]
+        doss = feature["dossier"]
+        dosstp = feature["dossiertp"]
+        nr = feature["dossiernr"]
+        
+        if dosstemp == nr:
+            #dossier met meerdere percelen
+            dosstemp = feature['dossiernr']
+            exp = QgsExpression("CAPAKEY ILIKE %s",capakey)
+            request = QgsFeatureRequest(exp)
+            adpf = adplyr.getFeatures(request)
+            geom = QgsGeometry(adpf.constGeometry())
+            geomtemp = geomtemp.combine(geom)
+            tel += 1
+        else:
+            dosstemp = feature['dossiernr']
+            exp = QgsExpression("CAPAKEY ILIKE %s",capakey)
+            request = QgsFeatureRequest(exp)
+            adpf = adplyr.getFeatures(request)
+            geom = QgsGeometry(adpf.constGeometry())
+            if tel >= 1:
+                geomtemp = geomtemp.combine(geom)
+                checkdossier = 1
+            else:
+                geomtemp = geom
+                tel +=1
+    # schrijf geometrie en dossiergegevens naar dossierlaag
+    fet = QgsFeature()
+    fet.setGeometry(geomtemp)
+    fet.setAttributes([oid, created,userid,updated,doss,nr,dosstp])
+    writer.addFeature(fet)
     
